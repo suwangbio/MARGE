@@ -1,0 +1,167 @@
+#!/usr/bin/env python2.7
+import regions as R
+from multiprocessing import Pool
+import subprocess
+import sys,os
+import numpy as np
+import math
+import argparse
+import time
+
+def extractBigwig(cmd,bins):
+    result = os.popen(cmd)
+    content = result.readlines()
+
+    if content:
+        temp = content[0].strip().replace('n/a','0')
+        temp = temp.split('\t')
+        return temp
+    else:
+        temp=[0]*int(bins)
+        return temp
+
+def readUDHS(uDHS):
+    udhs = {}
+    inf = open(uDHS)
+    for line in inf:
+        line = line.strip().split('\t')
+        line = [line[0], int(line[1]), int(line[2])]
+        try:
+            udhs[line[0]].append(line)
+        except:
+            udhs[line[0]] = [line]
+    return udhs
+
+def getInfo(genome, name, alpha, bwfilename, tss, chromesize, bwsum, udhs):
+    
+    Infos = []
+    chromeinfo = {}
+    inf = open(chromesize)
+    for line in inf:
+        line = line.strip().split('\t')
+        chrome = line[0]
+        size = line[1]
+        chromeinfo[chrome] = size
+
+    G = R.interval(genome=genome)
+    G.read_bed(tss)
+    
+    padding = int(1e5)
+  
+    weight  = np.array( [ 2.0*math.exp(-alpha*math.fabs(z)/1e5)/(1.0+math.exp(-alpha*math.fabs(z)/1e5))  for z in range( -padding,padding+1) ] )
+    #print np.sum(weight)    
+    #chrom_p = None
+    for i,chrom in enumerate(G.chrom):
+        center = G.start[i]
+        chrom = G.chrom[i]
+        try:
+            dhs = udhs[chrom]
+        except KeyError:
+            dhs = []
+        
+        start = center - padding
+        end = center + padding
+        if start < 0:
+            bwstart = 0
+        else:
+            bwstart = start
+        if end > int(chromeinfo[G.chrom[i]]):
+            bwend = int(chromeinfo[G.chrom[i]])
+        else:
+            bwend = end
+        bins = bwend - bwstart + 1
+
+        validDHS = []
+        for d in dhs:
+            if ((int(d[1]) > int(center)) and (int(d[2]) < int(bwend))) or ((int(d[2]) < int(center)) and (int(d[1]) > int(bwstart))):
+                validDHS.append(d)
+            else:
+                continue
+
+        validweight = np.zeros((2*padding) + 1)
+        for vd in validDHS:
+            dhsstart = int(vd[1])-start
+            dhsend = (vd[2])-start
+            validweight[dhsstart:dhsend] = 1
+
+        #print np.sum(validweight)
+        finalweight = weight*validweight
+        Infos.append([bwfilename,chrom,bwstart,bwend,bins,finalweight,name,G.start[i],G.end[i], G.name[i].split(':')[0], G.name[i].split(':')[1],G.strand[i]])
+
+    return Infos
+
+def getRP(Info):
+    bwfilename = Info[0]
+    chrom = Info[1]
+    bwstart = Info[2]
+    bwend = Info[3]
+    bins = Info[4]
+    weight = Info[5]
+    name = Info[6]
+    Gstart = Info[7]
+    Gend = Info[8]
+    Gname1 = Info[9]
+    Gname2 = Info[10]
+    Gstrand = Info[11]
+
+    bwsum = Info[12]
+
+    padding = int(1e5)
+    center = Gstart
+    cmd = '%s {0} {1} {2} {3} {4}'%bwsum
+    try:
+        cmd = cmd.format(bwfilename,chrom,bwstart,bwend + 1, bins)
+        values = extractBigwig(cmd,bins)
+        values = np.array(values,dtype=np.float64)
+   
+        values2 = np.hstack((np.zeros(bwstart - center + padding),values,np.zeros(center + padding - bwend )))
+        invalid = np.isnan( values2 )
+        values2[ invalid ]   = 0
+        #print np.sum(values2)
+
+        return chrom + '\t' + str(Gstart) + '\t' + str(Gend) + '\t' + Gname1 + '\t' + str(np.dot( values2, weight ))  + '\t' + Gname2 + '\t' + Gstrand + '\n'
+    except:
+        return chrom + '\t' + str(Gstart) + '\t' + str(Gend) + '\t' + Gname1 + '\t' + str(0)  + '\t' + Gname2 + '\t' + Gstrand + '\n'
+
+
+if __name__ == "__main__":
+    start = time.time()
+    results = []
+    try:
+        parser = argparse.ArgumentParser(description="""Map TSS to the nearest regions.""")
+        parser.add_argument( '-g', dest='genome', default='hg38', choices=['mm9','hg19','mm10','hg38'], required=False, help='genome' )
+        parser.add_argument( '-n', dest='name',   type=str, required=True, help='name to associate with input bed file' )
+        parser.add_argument( '-a', dest='alpha',  type=float, default=1e4, required=False, help='effect of distance on regulatory potential. Distance at which regulatory potential is 1/2, (default=10kb)' )
+        parser.add_argument( '-b', dest='bw',     type=str, required=True, help='Bigwig file name' )
+        parser.add_argument( '-u', dest='ud',     type=str, required=True, help='file for UDHS regions' )
+        parser.add_argument( '--cs', dest='chromesize',  type=str, required=True, help='chrom.sizes is two columns: <chromosome name> <size in bases>' )
+        parser.add_argument( '--tss', dest='refseqTSS',  type=str, required=True, help='refseqTSS is six columns: <chromosome name> <TSS> <TSS+1> <refseq:genesymbok> <score> <strand>' )
+        parser.add_argument( '--thread', dest='threads',  type=int, required=False, default=8, help='Number of threads to calcuate the Regulatory Potential, DEFAULT=8' )
+        parser.add_argument( '--bwsum', dest='bwsum',  type=str, required=True, help='Path fot the bigWigSummary script' )
+        args = parser.parse_args()
+        #chromeinfo = chromesizeinfo(args.chromesize)
+        output = args.name + '_all_RP.txt'
+        outf = open(output,'w+')
+        alpha = -math.log(1.0/3.0)*1e5/args.alpha
+        udhs = readUDHS(args.ud)
+        Infos = getInfo(args.genome, args.name, alpha, args.bw, args.refseqTSS, args.chromesize, args.bwsum, udhs)
+        p = Pool(args.threads)
+        result = p.map_async(getRP, Infos, callback=results.append)
+        p.close()
+        p.join()
+
+        for line in results:
+            for element in line:
+                outf.write(element)
+
+    except KeyboardInterrupt:
+        sys.stderr.write("User interrunpt me! ;-) Bye!\n")
+        sys.exit(0)
+    outf.close()       
+    end = time.time()
+    total = end - start
+    hour = int(total/3600)
+    minite = int(total - hour*3600)/60
+    second = int(total - hour*3600 - minite*60)
+    print 'total time: %s:%s:%s'%(hour, minite, second)
+

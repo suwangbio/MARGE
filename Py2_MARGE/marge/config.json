@@ -1,0 +1,18 @@
+ {
+	"ASSEMBLY":"[hg38|hg19|mm10|mm9]",
+	"MARGEdir":"/path/to/marge/installed", 
+	"REFdir":"/path/to/MARGE/reference/directory", 
+	"SAMPLESDIR":"/path/to/marge_testdata/",
+	"SAMPLES":"sample1 sample2 sample3 sample4",
+	"EXPSDIR":"/path/to/marge_testdata",
+	"EXPS":"genelist1 genelist2 genelist3",
+	"EXPTYPE":"[Gene_Only|Gene_Response]",
+	"ID":"[GeneSymbol|RefSeq]",
+	"tools":{
+		"MACS2":"/path/to/macs2",
+		"bedClip":"/path/to/bedClip",
+		"bedGraphToBigWig":"/path/to/bedGraphToBigWig",
+		"bigWigAverageOverBed":"/path/to/bigWigAverageOverBed",
+		"bigWigSummary":"/path/to/bigWigSummary"
+	}
+}

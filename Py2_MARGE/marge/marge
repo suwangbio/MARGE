@@ -1,0 +1,86 @@
+#!/usr/bin/python
+import argparse
+import marge
+import logging
+import sys
+import os
+import shutil
+from pkg_resources import resource_filename
+
+
+def init_workflow(directory):
+
+    print directory
+
+    try:
+        os.makedirs(directory)
+    except OSError:
+        # either directory exists (then we can ignore) or it will fail in the
+        # next step.
+        pass
+
+    def guess_sample_name(f,suffix):
+        if f.endswith(suffix):
+            return os.path.splitext(os.path.basename(f))[0]
+        else:
+            logging.error("Aligned samples must be given as %s files."%suffix)
+
+    def get_resource(f):
+        return resource_filename('marge' ,f)
+        #return os.path.join(os.path.dirname(__file__), f)
+
+    def get_target(f):
+        return os.path.join(directory, f)
+
+    def backup(f):
+        target = get_target(f)
+        if os.path.exists(target):
+            shutil.copy(target, target + ".old")
+
+    def install(f, backup=True):
+        source = get_resource(f)
+        target = get_target(f)
+        shutil.copy(source, target)
+
+    backup("Snakefile")
+    install("Snakefile")
+    backup("config.json")
+    install("config.json")
+
+def main():
+    # create arg parser
+    parser = argparse.ArgumentParser(
+        "MARGE is a free software to predict key regulated genes"
+        " and cis-regulatory regions in human or mouse.")
+    MARGE_VERSION = 'MARGE Version = 1.0'
+    parser.add_argument("--version",
+                        action="version",
+                        version="%(prog)s "+MARGE_VERSION)
+    subparsers = parser.add_subparsers(dest="subcommand")
+
+    workflow = subparsers.add_parser(
+        "init",
+        help="Initialize the MARGE workflow "
+        "in a given directory. This will "
+        "install a Snakefile, and a "
+        "config file in this directory. "
+        "Configure the config file according "
+        "to your needs, and run the workflow "
+        "with Snakemake "
+        "(https://bitbucket.org/johanneskoester/snakemake).")
+
+    workflow.add_argument("directory",
+                          help="Path to the directory where the "
+                          "workflow shall be initialized.")
+
+    args = parser.parse_args()
+
+    if args.subcommand == "init":
+        init_workflow(args.directory)
+    else:
+        parser.print_help()
+        exit(1)
+    exit(0)
+
+if __name__ == '__main__':
+    main()
