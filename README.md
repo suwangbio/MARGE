@@ -80,7 +80,9 @@ MARGE support two kinds of Gene List format: Gene_Only and Gene_Response.
 |...|
 
 **Gene_Response** format, two columns, each row is a gene, first column is gene ID and second column is 1(target) or 0(non-target). Both GeneSymbol ID and RefSeq ID are supported by MARGE
+
 ###### Example
+
 | geneID |1/0|
 |---|---:|
 | NM_000397 |1|
@@ -90,6 +92,7 @@ MARGE support two kinds of Gene List format: Gene_Only and Gene_Response.
 | NM_002290 |0|
 | NM_000495 |0|
 |...|...|
+
 **Please do not contain the header in the gene list file, and make sure it is tab delimitated in the Gene_Response file format.**
 
 **!! Only when assembly is hg38 or mm10, MARGE can do cis-regions prediction.**
